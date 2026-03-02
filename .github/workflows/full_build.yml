@@ -16,26 +16,16 @@ jobs:
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          # Прописываем путь к бинарникам в PATH Гитхаба
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Build Go Framework
         run: |
-          # 1. Заходим в папку, где лежит go.mod
           cd go
-          
-          # 2. Скачиваем зависимости мобильной платформы правильно (внутри модуля)
           go mod tidy
           go get golang.org/x/mobile/bind
-          
-          # 3. Инициализируем gomobile
           gomobile init
-          
-          # 4. Создаем папку для фреймворка
           mkdir -p ../Frameworks
-          
-          # 5. Собираем. Указываем пакет ./node относительно текущей папки
-          gomobile bind -target=ios -v -o ../Frameworks/Node.xcframework ./node
+          gomobile bind -target=ios -o ../Frameworks/Node.xcframework ./node
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -48,13 +38,14 @@ jobs:
             -scheme SoulNode \
             -configuration Release \
             -sdk iphoneos \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
           mkdir -p Payload
-          # Проверяем, где лежит приложение и упаковываем
-          mv build/Release-iphoneos/SoulNode.app Payload/
+          # В Xcode 16 путь к .app всегда такой при использовании derivedDataPath
+          cp -r build/Build/Products/Release-iphoneos/SoulNode.app Payload/
           zip -r SoulNode.ipa Payload
 
       - name: Upload Artifact

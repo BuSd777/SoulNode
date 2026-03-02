@@ -7,12 +7,15 @@ targets:
     platform: iOS
     deploymentTarget: "15.0"
     sources: [SoulSwift]
-    entitlements: { path: SoulSwift/SoulNode.entitlements }
+    info:
+      path: SoulSwift/Info.plist
+    entitlements: 
+      path: SoulSwift/SoulNode.entitlements
     dependencies:
       - framework: Frameworks/Node.xcframework
         embed: true
     settings:
-      ENABLE_BITCODE: NO
+      CODE_SIGNING_ALLOWED: NO
       CODE_SIGNING_REQUIRED: NO
       AD_HOC_CODE_SIGNING_ALLOWED: YES
-      INFOPLIST_KEY_UIBackgroundModes: "audio"
+      ENABLE_BITCODE: NO
