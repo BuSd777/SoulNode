@@ -4,28 +4,52 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with: {go-version: '1.21'}
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
       - name: Install gomobile
         run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
-          export PATH=$PATH:$(go env GOPATH)/bin
-          gomobile init
+          go install golang.org/x/mobile/cmd/gobind@latest
+          # Добавляем путь к бинарникам Go в систему
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
       - name: Build Go Framework
         run: |
+          # Инициализируем gomobile (теперь путь в PATH)
+          gomobile init
           mkdir -p Frameworks
           cd go
           go mod tidy
-          export PATH=$PATH:$(go env GOPATH)/bin
           gomobile bind -target=ios -o ../Frameworks/Node.xcframework ./node
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
       - name: Build IPA
         run: |
-          brew install xcodegen
           xcodegen generate
-          xcodebuild build -project SoulNode.xcodeproj -scheme SoulNode -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+          xcodebuild build \
+            -project SoulNode.xcodeproj \
+            -scheme SoulNode \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
           mkdir -p Payload
+          # Проверяем, где создался бинарник и перемещаем его
           mv build/Release-iphoneos/SoulNode.app Payload/
           zip -r SoulNode.ipa Payload
-      - uses: actions/upload-artifact@v3
-        with: {name: SoulNode-IPA, path: SoulNode.ipa}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoulNode-IPA
+          path: SoulNode.ipa
