@@ -10,7 +10,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25.x' # Переходим на 1.25, как просит gomobile
 
       - name: Install gomobile
         run: |
@@ -19,13 +19,18 @@ jobs:
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Build Go Framework
+        env:
+          GOPROXY: https://proxy.golang.org,direct # Используем прокси для обхода ошибки логина
         run: |
           cd go
+          # Сначала добавляем нужные библиотеки принудительно
           go mod tidy
+          go get github.com/crow-misia/slsk-go@main
           go get golang.org/x/mobile/bind
+          
           gomobile init
           mkdir -p ../Frameworks
-          gomobile bind -target=ios -o ../Frameworks/Node.xcframework ./node
+          gomobile bind -target=ios -v -o ../Frameworks/Node.xcframework ./node
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -44,7 +49,6 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
           mkdir -p Payload
-          # В Xcode 16 путь к .app всегда такой при использовании derivedDataPath
           cp -r build/Build/Products/Release-iphoneos/SoulNode.app Payload/
           zip -r SoulNode.ipa Payload
 
