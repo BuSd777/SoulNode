@@ -8,32 +8,38 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             List {
-                Section(header: Text("Server Control")) {
-                    Text("Current Status:")
+                Section(header: Text("Network Status")) {
                     Text(status.logs)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(status.isRunning ? .green : .orange)
                         .listRowBackground(Color.black)
                     
+                    if status.isRunning {
+                        Text("✅ Connected via Direct IP")
+                    } else {
+                        Text("❌ Offline / Connecting...")
+                    }
+                }
+
+                Section(header: Text("Control Panel")) {
                     Button(action: {
                         SlskdLauncher.shared.restartServer()
                     }) {
                         HStack {
-                            Image(systemName: "arrow.clockwise.circle.fill")
-                            Text("FORCE RECONNECT")
+                            Image(systemName: "arrow.clockwise")
+                            Text("Force Reconnect")
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(.blue)
                     }
-                    .listRowBackground(Color.blue)
                     
                     Button(action: {
-                        // Для полной остановки на iOS проще убить приложение,
-                        // но мы можем просто разорвать связь
-                        SlskdLauncher.shared.restartServer() 
+                        // Просто сбрасываем статус, реальный стоп через kill app
+                        status.logs = "Stopped. Restart App to connect again."
+                        status.isRunning = false
                     }) {
                         HStack {
-                            Image(systemName: "stop.circle.fill")
-                            Text("RESTART NETWORK STACK")
+                            Image(systemName: "power")
+                            Text("Stop Engine")
                         }
                         .foregroundColor(.red)
                     }
@@ -44,7 +50,7 @@ struct SettingsView: View {
                     SecureField("Password", text: $pass)
                 }
             }
-            .navigationTitle("System Control")
+            .navigationTitle("SoulNode Config")
         }
     }
 }
