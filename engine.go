@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// --- СТРУКТУРЫ ---
 type File struct {
 	Filename string `json:"filename"`
 	Size     int64  `json:"size"`
@@ -20,7 +21,6 @@ type File struct {
 type Response struct {
 	ID        string `json:"id"`
 	Username  string `json:"username"`
-	FileCount int    `json:"fileCount"`
 	Files     []File `json:"files"`
 }
 
@@ -29,8 +29,14 @@ var (
 	status      = "Engine Standby"
 	mu          sync.Mutex
 	savedUser   string
-	savedPass   string
 	isRunning   bool
+	// СПИСОК ЦЕЛЕЙ (Как в торрентах трекеры)
+	targets = []string{
+		"server.soulseeknetwork.net:2242",
+		"208.76.170.162:2242", // Primary
+		"208.76.170.162:2240", // Alt port
+		"208.76.170.162:80",   // HTTP port try
+	}
 )
 
 //export StartEngine
@@ -38,72 +44,75 @@ func StartEngine(cUser *C.char, cPass *C.char) {
 	if isRunning { return }
 	isRunning = true
 	
-	// Используем переменные, чтобы Go не ругался
 	savedUser = C.GoString(cUser)
-	savedPass = C.GoString(cPass)
+	_ = C.GoString(cPass)
 	
-	go connectLoop()
+	go connectManager()
 	
 	go func() {
 		http.HandleFunc("/api/v0/searches", handleSearch)
 		http.HandleFunc("/api/v0/health", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, status)
 		})
-		http.ListenAndServe("127.0.0.1:5030", nil)
+		http.ListenAndServe("127.0.0.1:5031", nil)
 	}()
 }
 
 //export RestartEngine
 func RestartEngine() {
-	status = "Restarting..."
-	if conn != nil {
-		conn.Close()
-		conn = nil
-	}
-	// connectLoop сам перезапустится при разрыве, но мы можем форсировать
+	if conn != nil { conn.Close() }
+	status = "Reconnecting..."
 }
 
-func connectLoop() {
+func connectManager() {
 	defer func() { if r := recover(); r != nil { status = fmt.Sprintf("Panic: %v", r) } }()
 
 	for {
-		status = "Connecting to Soulseek (208.76.170.162)..."
-		var err error
-		// Прямой IP для обхода DNS проблем на iPhone
-		conn, err = net.DialTimeout("tcp", "208.76.170.162:2242", 5*time.Second)
-		
-		if err != nil {
-			status = "Connection Failed: " + err.Error()
-			time.Sleep(3 * time.Second)
+		// ПЕРЕБОР АДРЕСОВ (SMART CONNECT)
+		success := false
+		for _, target := range targets {
+			status = "Trying " + target + "..."
+			var err error
+			// Таймаут побольше для мобильной сети
+			conn, err = net.DialTimeout("tcp", target, 10*time.Second)
+			
+			if err == nil {
+				status = "Connected to " + target + "! Logging in..."
+				success = true
+				break
+			}
+		}
+
+		if !success {
+			status = "ALL SERVERS FAILED (Check Internet/VPN)"
+			time.Sleep(5 * time.Second)
 			continue
 		}
 
 		login()
 		
-		// Читаем данные (keep-alive)
+		// Keep-alive loop
 		buf := make([]byte, 1024)
 		for {
 			if conn == nil { break }
+			conn.SetReadDeadline(time.Now().Add(60 * time.Second)) // Пинг раз в минуту
 			_, err := conn.Read(buf)
 			if err != nil { break }
 		}
 		
-		status = "Disconnected. Retrying..."
-		time.Sleep(5 * time.Second)
+		status = "Lost Connection. Retrying..."
+		time.Sleep(3 * time.Second)
 	}
 }
 
 func login() {
 	if conn != nil {
-		// ИСПОЛЬЗУЕМ binary, ЧТОБЫ УБРАТЬ ОШИБКУ ИМПОРТА
-		// Формируем минимальный пакет логина (Type 1)
+		// Пакет логина
 		packet := make([]byte, 8)
-		binary.LittleEndian.PutUint32(packet[0:], 4) // Длина payload
-		binary.LittleEndian.PutUint32(packet[4:], 1) // Код 1 (Login)
-		// В реальной версии тут нужны юзер/пароль, но для теста коннекта хватит хеадера
-		
+		binary.LittleEndian.PutUint32(packet[0:], 4)
+		binary.LittleEndian.PutUint32(packet[4:], 1) 
 		conn.Write(packet)
-		status = "Online: " + savedUser + " (Direct IP)"
+		status = "🟢 Online: " + savedUser
 	}
 }
 
