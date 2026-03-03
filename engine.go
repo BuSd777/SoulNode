@@ -4,7 +4,6 @@ import "C"
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"time"
 )
 
+// --- GLOBAL VARS ---
 var (
 	conn        net.Conn
 	status      = "Engine Standby"
@@ -24,6 +24,8 @@ var (
 		"208.76.170.162:2242",
 	}
 )
+
+// --- HELPERS ---
 
 func setStatus(s string) {
 	statusMu.Lock()
@@ -43,6 +45,8 @@ func writeString(buf *bytes.Buffer, s string) {
 	buf.WriteString(s)
 }
 
+// --- EXPORTED ---
+
 //export StartEngine
 func StartEngine(cUser *C.char, cPass *C.char) {
 	if isRunning { return }
@@ -53,10 +57,14 @@ func StartEngine(cUser *C.char, cPass *C.char) {
 	go connectManager()
 	
 	go func() {
+		// Health check
 		http.HandleFunc("/api/v0/health", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, getStatus())
 		})
+		
+		// Search stub
 		http.HandleFunc("/api/v0/searches", handleSearch)
+		
 		http.ListenAndServe("127.0.0.1:5031", nil)
 	}()
 }
@@ -66,6 +74,8 @@ func RestartEngine() {
 	if conn != nil { conn.Close() }
 	setStatus("Restarting...")
 }
+
+// --- LOGIC ---
 
 func connectManager() {
 	defer func() { if r := recover(); r != nil { setStatus(fmt.Sprintf("Panic: %v", r)) } }()
@@ -105,7 +115,7 @@ func login() bool {
 	if conn == nil { return false }
 	buf := new(bytes.Buffer)
 	
-	binary.Write(buf, binary.LittleEndian, uint32(1)) // Login Code
+	binary.Write(buf, binary.LittleEndian, uint32(1)) // Login
 	writeString(buf, savedUser)
 	writeString(buf, savedPass)
 	binary.Write(buf, binary.LittleEndian, uint32(157)) // Version
@@ -132,6 +142,7 @@ func keepAliveLoop() {
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
+	// Пока просто заглушка, JSON нам тут не нужен
 	setStatus("Search command received")
 	w.WriteHeader(200)
 }
