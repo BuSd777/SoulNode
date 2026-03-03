@@ -1,17 +1,16 @@
 name: Build Full SoulNode
-on: [push]
+on:[push]
 jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Project
         run: xcodegen generate
       - name: Download slskd binary (For TrollStore/Jailbreak)
         run: |
-          # Скачиваем бинарник slskd под ARM64 (Linux/iOS)
           mkdir -p Sources/Resources
           curl -L -o Sources/Resources/slskd https://github.com/slskd/slskd/releases/download/0.19.1/slskd-0.19.1-linux-arm64.zip
           unzip Sources/Resources/slskd -d Sources/Resources/
@@ -23,7 +22,7 @@ jobs:
           mv SoulNode.xcarchive/Products/Applications/SoulNode.app Payload/
           zip -r SoulNode.ipa Payload
       - name: Upload IPA
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: SoulNode-Release
           path: SoulNode.ipa
