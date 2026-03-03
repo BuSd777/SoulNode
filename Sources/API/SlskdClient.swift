@@ -14,7 +14,9 @@ class SlskdClient: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = SearchRequest(id: searchId, searchText: query)
         request.httpBody = try? JSONEncoder().encode(body)
-        URLSession.shared.dataTask(with: request) { _, _, _ in self.fetchResults(searchId: searchId) }.resume()
+        URLSession.shared.dataTask(with: request) { _, _, _ in 
+            self.fetchResults(searchId: searchId) 
+        }.resume()
     }
     
     func fetchResults(searchId: String) {
