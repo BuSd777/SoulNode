@@ -18,6 +18,7 @@ targets:
         UILaunchStoryboardName: LaunchScreen
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        UISupportsDocumentBrowser: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         NSLocalNetworkUsageDescription: "Direct Soulseek Access"
