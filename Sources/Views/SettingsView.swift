@@ -1,51 +1,39 @@
 import SwiftUI
 
 struct SettingsView: View {
+    // Используем ТЕ ЖЕ ключи, что и на экране входа
     @AppStorage("slskUsername") var user = ""
     @AppStorage("slskPassword") var pass = ""
-    @AppStorage("serverPort") var port = "5030"
     @ObservedObject var status = ServerStatus.shared
 
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Account Details")) {
-                    TextField("Soulseek Username", text: $user)
+                Section(header: Text("Soulseek Credentials")) {
+                    TextField("Username", text: $user)
                         .autocapitalization(.none)
-                    SecureField("Soulseek Password", text: $pass)
+                    SecureField("Password", text: $pass)
                 }
 
-                Section(header: Text("Engine Configuration")) {
-                    TextField("Internal Port", text: $port)
-                        .keyboardType(.numberPad)
+                Section(header: Text("Storage")) {
+                    Text("Downloads location:")
+                    Text("Files App -> On My iPhone -> SoulNode")
+                        .font(.caption).foregroundColor(.gray)
+                }
+
+                Section(header: Text("Engine Status")) {
+                    Text(status.logs)
+                        .font(.system(size: 10, design: .monospaced))
+                        .lineLimit(5)
                     
                     if status.isRunning {
-                        Button("Stop Engine (Restart App)") {
-                            // В мобильных ОС проще перезапустить приложение
-                        }.foregroundColor(.red)
+                        Text("🟢 Engine Online").foregroundColor(.green)
                     } else {
-                        Button("Start Internal Engine") {
-                            SlskdLauncher.shared.startServer(username: user, password: pass)
-                        }
-                        .foregroundColor(.green)
-                        .disabled(status.isConnecting)
+                        Text("🔴 Engine Offline").foregroundColor(.red)
                     }
                 }
-
-                Section(header: Text("Debug Info")) {
-                    Text("Status: \(status.isRunning ? "ONLINE" : "OFFLINE")")
-                    Text("Architecture: arm64 (iOS)")
-                }
-                
-                Section {
-                    Button("Reset All Settings") {
-                        user = ""; pass = ""; port = "5030"
-                        status.isRunning = false
-                        status.logs = "Settings reseted.\n"
-                    }.foregroundColor(.red)
-                }
             }
-            .navigationTitle("Total Settings")
+            .navigationTitle("Settings")
         }
     }
 }

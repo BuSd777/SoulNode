@@ -1,45 +1,62 @@
 import SwiftUI
 
 struct LoginView: View {
-    @State private var user = ""
-    @State private var pass = ""
-    @ObservedObject var status = ServerStatus.shared
+    // Привязываем к тем же ключам UserDefaults
+    @AppStorage("slskUsername") var user = ""
+    @AppStorage("slskPassword") var pass = ""
     @AppStorage("isLogged") var isLogged = false
+    @ObservedObject var status = ServerStatus.shared
 
     var body: some View {
-        VStack {
-            Text("SoulNode Go").font(.largeTitle).bold().padding(.top)
+        VStack(spacing: 20) {
+            Image(systemName: "network").font(.system(size: 80)).foregroundColor(.cyan)
+            Text("SoulNode Network").font(.largeTitle).bold()
             
-            VStack(spacing: 15) {
-                TextField("Username", text: $user)
-                    .textFieldStyle(.roundedBorder).autocapitalization(.none)
-                SecureField("Password", text: $pass)
+            VStack(alignment: .leading) {
+                Text("Username").font(.caption).foregroundColor(.gray)
+                TextField("Soulseek User", text: $user)
                     .textFieldStyle(.roundedBorder)
+                    .autocapitalization(.none)
                 
-                Button(action: { 
-                    SlskdLauncher.shared.startServer(username: user, password: pass) 
-                }) {
-                    if status.isConnecting {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("Start & Login").bold()
-                    }
-                }
-                .frame(maxWidth: .infinity).padding().background(.blue).foregroundColor(.white).cornerRadius(10)
-                .disabled(status.isConnecting || user.isEmpty)
-            }.padding()
+                Text("Password").font(.caption).foregroundColor(.gray)
+                SecureField("Soulseek Pass", text: $pass)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .padding()
 
+            Button(action: {
+                SlskdLauncher.shared.startServer(username: user, password: pass)
+            }) {
+                HStack {
+                    if status.isConnecting { ProgressView().tint(.black) }
+                    Text(status.isConnecting ? "Connecting..." : "Connect Engine")
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(user.isEmpty ? Color.gray : Color.cyan)
+                .foregroundColor(.black)
+                .cornerRadius(12)
+            }
+            .disabled(user.isEmpty || status.isConnecting)
+            .padding(.horizontal)
+
+            // Логи
             ScrollView {
                 Text(status.logs)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.green)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 150).background(.black).padding()
-            
+            .frame(height: 120)
+            .background(Color.black.opacity(0.8))
+            .cornerRadius(8)
+            .padding()
+
             if status.isRunning {
-                Button("Enter App") { isLogged = true }
-                    .padding().frame(maxWidth: .infinity).background(.green).foregroundColor(.white).cornerRadius(10).padding()
+                Button("ENTER SYSTEM") { isLogged = true }
+                    .font(.headline)
+                    .padding()
+                    .foregroundColor(.green)
             }
         }
     }
