@@ -1,4 +1,4 @@
-name: Real Engine Build V2
+name: Monolith Engine Build
 on: [push]
 jobs:
   build:
@@ -9,12 +9,10 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
-      - name: Compile & Force Sign
+      - name: Build Go Library
         run: |
-          mkdir -p Resources
-          CGO_ENABLED=0 GOOS=ios GOARCH=arm64 go build -ldflags="-s -w" -o Resources/slskd main.go
-          # Подписываем с использованием наших прав
-          codesign --force --entitlements entitlements.plist -s - Resources/slskd
+          # Компилируем Go в статическую библиотеку C-archive
+          CGO_ENABLED=1 GOOS=ios GOARCH=arm64 go build -buildmode=c-archive -o libengine.a engine.go
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Build IPA
@@ -27,5 +25,5 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: SoulNode-Signed-Logic
+          name: SoulNode-Monolith
           path: SoulNode.ipa

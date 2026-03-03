@@ -6,17 +6,17 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "15.0"
-    sources:
-      - path: Sources
-      - path: Resources
-        buildPhase: resources
+    sources: [Sources]
     settings:
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      SWIFT_OBJC_BRIDGING_HEADER: Sources/API/Bridge.h
+      OTHER_LDFLAGS: $(inherited) -lengine
+      LIBRARY_SEARCH_PATHS: $(inherited) $(PROJECT_DIR)
     info:
       path: Info.plist
       properties:
         UILaunchStoryboardName: LaunchScreen
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-        NSLocalNetworkUsageDescription: "Access Soulseek"
+        NSLocalNetworkUsageDescription: "Direct Soulseek Access"
         UIBackgroundModes: [audio, fetch, processing]
