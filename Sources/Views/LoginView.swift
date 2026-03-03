@@ -8,26 +8,25 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "bolt.fill").font(.system(size: 60)).foregroundColor(.green)
-            Text("SoulNode Config").font(.title).bold()
+            Image(systemName: "bolt.circle.fill").font(.system(size: 80)).foregroundColor(.green)
+            Text("SoulNode").font(.largeTitle).bold()
 
             if status.isConnecting {
                 ProgressView("Starting Engine...")
-                Text("This may take a minute on older devices").font(.caption).foregroundColor(.gray)
+                Text("Device may get warm").font(.caption).foregroundColor(.gray)
+                Button("Skip and Debug") { isLogged = true }.padding().foregroundColor(.blue)
             } else {
                 VStack {
                     TextField("Username", text: $username).textFieldStyle(RoundedBorderTextFieldStyle()).autocapitalization(.none)
                     SecureField("Password", text: $password).textFieldStyle(RoundedBorderTextFieldStyle())
                 }.padding()
 
-                Button("Initialize Server") {
+                Button("Start Local Engine") {
                     SlskdLauncher.shared.startServer(username: username, password: password)
-                }
-                .buttonStyle(.borderedProminent)
+                }.buttonStyle(.borderedProminent).accentColor(.green)
+                
+                Button("Remote Server Mode") { isLogged = true }.padding().foregroundColor(.gray)
             }
-        }
-        .onReceive(status.$isRunning) { running in
-            if running { isLogged = true }
         }
     }
 }
