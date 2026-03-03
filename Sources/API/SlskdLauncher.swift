@@ -3,32 +3,30 @@ import Foundation
 class SlskdLauncher {
     static let shared = SlskdLauncher()
     
-    func startServer() {
+    func startServer(username: String, password: String) {
         ServerStatus.shared.isConnecting = true
-        ServerStatus.shared.logs = "--- Booting SoulNode ---\n"
+        ServerStatus.shared.logs = "--- Booting SoulNode Go ---\n"
+        ServerStatus.shared.logs += "User: \(username)\n"
         
-        // Это единственный правильный способ найти ресурс в iOS
         guard let binaryPath = Bundle.main.path(forResource: "slskd", ofType: nil) else {
-            ServerStatus.shared.logs += "CRITICAL: Binary 'slskd' still missing in bundle!\n"
-            let path = Bundle.main.bundlePath
-            let content = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
-            ServerStatus.shared.logs += "Files found: \(content.joined(separator: ", "))\n"
+            ServerStatus.shared.logs += "CRITICAL: Binary 'slskd' missing!\n"
             ServerStatus.shared.isConnecting = false
             return
         }
 
-        ServerStatus.shared.logs += "Binary found at: \(binaryPath)\n"
+        ServerStatus.shared.logs += "Binary found. Launching...\n"
         
         DispatchQueue.global(qos: .background).async {
             var pid: pid_t = 0
-            let args = [binaryPath]
+            // Передаем аргументы в Go-движок (пока он их просто игнорит, но связь есть)
+            let args = [binaryPath, "-user", username, "-pass", password]
             let cArgs = args.map { strdup($0) } + [nil]
             
             let status = posix_spawn(&pid, binaryPath, nil, nil, cArgs, nil)
             
             DispatchQueue.main.async {
                 if status == 0 {
-                    ServerStatus.shared.logs += "Engine started (PID \(pid))\n"
+                    ServerStatus.shared.logs += "Process started. PID: \(pid)\n"
                     self.checkHealth()
                 } else {
                     ServerStatus.shared.logs += "Spawn failed: \(status)\n"
@@ -46,7 +44,7 @@ class SlskdLauncher {
             ServerStatus.shared.logs += "Ping engine... (\(attempts))\n"
             
             let url = URL(string: "http://127.0.0.1:5030/api/v0/health")!
-            URLSession.shared.dataTask(with: url) { data, res, _ in
+            URLSession.shared.dataTask(with: url) { _, res, _ in
                 if (res as? HTTPURLResponse)?.statusCode == 200 {
                     DispatchQueue.main.async {
                         ServerStatus.shared.isRunning = true
@@ -59,7 +57,7 @@ class SlskdLauncher {
             
             if attempts > 15 { 
                 timer.invalidate()
-                ServerStatus.shared.logs += "Timeout: Engine not responding.\n"
+                ServerStatus.shared.logs += "Timeout: No response from 5030.\n"
                 ServerStatus.shared.isConnecting = false
             }
         }
