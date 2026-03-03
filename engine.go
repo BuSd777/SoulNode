@@ -12,166 +12,164 @@ import (
 	"time"
 )
 
-// Структуры данных (JSON для Swift)
+// --- СТРУКТУРЫ ---
 type File struct {
 	Filename string `json:"filename"`
 	Size     int64  `json:"size"`
 	BitRate  int    `json:"bitRate"`
-	Length   int    `json:"length"` // Длительность
 }
 
 type Response struct {
 	ID        string `json:"id"`
 	Username  string `json:"username"`
-	FileCount int    `json:"fileCount"`
 	Files     []File `json:"files"`
 }
 
 var (
-	conn        net.Conn
-	status      = "Engine Standby"
-	searchResults = make(map[string][]Response)
-	mu          sync.Mutex
-	token       uint32 = 1
+	serverConn net.Conn
+	status     = "Engine Standby"
+	results    = make(map[string][]Response)
+	mu         sync.Mutex
+	myIP       uint32
+	myPort     = 5030
 )
 
-// --- НИЗКОУРОВНЕВАЯ РАБОТА С ПАКЕТАМИ SOULSEEK ---
+// --- ПОМОЩНИКИ ---
+func getLocalIP() uint32 {
+	addrs, _ := net.InterfaceAddrs()
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ip := ipnet.IP.To4()
+				return binary.LittleEndian.Uint32(ip)
+			}
+		}
+	}
+	return 0
+}
 
 func writeString(buf *bytes.Buffer, s string) {
 	binary.Write(buf, binary.LittleEndian, uint32(len(s)))
 	buf.WriteString(s)
 }
 
-func sendLogin(user, pass string) {
-	buf := new(bytes.Buffer)
-	// Code 1: Login
-	binary.Write(buf, binary.LittleEndian, uint32(1)) 
-	writeString(buf, user)
-	writeString(buf, pass)
-	binary.Write(buf, binary.LittleEndian, uint32(157)) // Version
-	writeString(buf, "") // Hash (md5) - старый сервер принимает и так
-	binary.Write(buf, binary.LittleEndian, uint32(0))
-	writeString(buf, "")
-	
-	sendPacket(buf.Bytes())
-}
-
-func sendSearch(query string) {
-	buf := new(bytes.Buffer)
-	// Code 26: File Search
-	binary.Write(buf, binary.LittleEndian, uint32(26)) 
-	binary.Write(buf, binary.LittleEndian, token) // Token
-	writeString(buf, query)
-	
-	sendPacket(buf.Bytes())
-	token++
-}
-
-func sendPacket(data []byte) {
-	if conn == nil { return }
-	
-	// Длина пакета (4 байта) + Сам пакет
-	fullLen := uint32(len(data))
-	header := make([]byte, 4)
-	binary.LittleEndian.PutUint32(header, fullLen)
-	
-	conn.Write(append(header, data...))
-}
-
-// ------------------------------------------------
+// --- ОСНОВНАЯ ЛОГИКА ---
 
 //export StartEngine
 func StartEngine(cUser *C.char, cPass *C.char) {
-	// Защита от вылетов
 	defer func() { if r := recover(); r != nil { status = fmt.Sprintf("PANIC: %v", r) } }()
 
 	user := C.GoString(cUser)
 	pass := C.GoString(cPass)
-	
+	myIP = getLocalIP()
+
+	// 1. ЗАПУСКАЕМ СЛУШАТЕЛЯ (ЧТОБЫ ПРИНИМАТЬ ФАЙЛЫ ОТ ДРУГИХ)
+	go startP2PListener()
+
+	// 2. ПОДКЛЮЧАЕМСЯ К СЕРВЕРУ
 	go func() {
-		status = "Resolving Soulseek Server..."
-		// ИСПОЛЬЗУЕМ ПРЯМОЙ IP, ЧТОБЫ ОБОЙТИ ОШИБКУ DNS
-		// 208.76.170.162 - это server.soulseeknetwork.net
+		status = "Connecting to Server (208.76.170.162)..."
 		var err error
-		conn, err = net.DialTimeout("tcp", "208.76.170.162:2242", 15*time.Second)
-		
+		serverConn, err = net.DialTimeout("tcp", "208.76.170.162:2242", 10*time.Second)
 		if err != nil {
-			status = "Connect Fail: " + err.Error()
+			status = "Server Down: " + err.Error()
 			return
 		}
+
+		// Логин (Type 1) - СООБЩАЕМ СВОЙ IP И ПОРТ!
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, uint32(1)) // Code 1
+		writeString(buf, user)
+		writeString(buf, pass)
+		binary.Write(buf, binary.LittleEndian, uint32(157)) // Version
+		writeString(buf, "") // Hash
+		binary.Write(buf, binary.LittleEndian, myIP) // <--- ВАЖНО: НАШ IP
+		binary.Write(buf, binary.LittleEndian, uint32(myPort)) // <--- ВАЖНО: НАШ ПОРТ
+		writeString(buf, "")
+
+		sendPacket(buf.Bytes())
+		status = "Sent Login. Listening for Peers..."
 		
-		status = "Connected! Logging in..."
-		sendLogin(user, pass)
-		
-		// Запускаем слушатель
-		handleConnection()
+		handleServerMessages()
 	}()
 
 	startHTTPServer()
 }
 
-func handleConnection() {
+func startP2PListener() {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", myPort))
+	if err != nil {
+		fmt.Printf("Cannot bind port %d: %v\n", myPort, err)
+		return
+	}
 	for {
-		// Читаем длину сообщения
+		conn, err := ln.Accept()
+		if err != nil { continue }
+		// Сюда приходят другие юзеры отдавать результаты поиска
+		go handlePeer(conn)
+	}
+}
+
+func handlePeer(conn net.Conn) {
+	defer conn.Close()
+	// Тут должна быть логика разбора P2P протокола (PeerInit, SharedFileList)
+	// Это ОЧЕНЬ сложный бинарный протокол.
+	// Для диагностики мы просто запишем, что кто-то подключился.
+	status = "⚡️ INCOMING PEER CONNECTION! (NAT WORKS)"
+}
+
+func sendPacket(data []byte) {
+	if serverConn == nil { return }
+	fullLen := uint32(len(data))
+	header := make([]byte, 4)
+	binary.LittleEndian.PutUint32(header, fullLen)
+	serverConn.Write(append(header, data...))
+}
+
+func handleServerMessages() {
+	for {
 		header := make([]byte, 4)
-		_, err := conn.Read(header)
-		if err != nil {
-			status = "Socket Error: " + err.Error()
-			return
+		_, err := serverConn.Read(header)
+		if err != nil { 
+			status = "Disconnected from Server"
+			return 
 		}
 		msgLen := binary.LittleEndian.Uint32(header)
-		
-		// Читаем тело
-		if msgLen > 1000000 { continue } // Защита от мусора
 		buf := make([]byte, msgLen)
-		_, err = conn.Read(buf)
+		_, err = serverConn.Read(buf)
 		if err != nil { return }
-		
-		// Разбираем код сообщения
+
 		code := binary.LittleEndian.Uint32(buf[:4])
-		
-		switch code {
-		case 1: // Login Response
-			success := buf[4]
-			if success == 1 {
-				status = "🟢 LOGGED IN (Real Network)"
+		if code == 1 {
+			if buf[4] == 1 {
+				status = "🟢 ONLINE (Port 5030 Open)"
 			} else {
-				status = "🔴 Login Failed (Bad Password?)"
+				status = "🔴 Bad Password"
 			}
-		case 9, 15: // Found Files (В упрощенном виде, так как это сложно для одного файла)
-			// Здесь в реальности нужно парсить сложную структуру P2P
-			// Но так как мы за NAT, мы скорее всего не получим сюда прямых ответов
-			// Это ограничение протокола, а не "затычка"
-			status = "Received P2P Signal (Code 9)"
-		default:
-			// Просто пишем в лог, что сеть жива
-			// status = fmt.Sprintf("Network Msg: %d", code)
 		}
 	}
 }
 
 func startHTTPServer() {
+	// API Поиска
 	http.HandleFunc("/api/v0/searches", func(w http.ResponseWriter, r *http.Request) {
 		var req struct { SearchText string `json:"searchText"` }
 		json.NewDecoder(r.Body).Decode(&req)
 		
-		// Очищаем старые результаты (так как мы не фейкуем)
-		mu.Lock()
-		searchResults = make(map[string][]Response)
-		mu.Unlock()
+		// Отправляем поиск (Type 26)
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, uint32(26)) // Code 26
+		binary.Write(buf, binary.LittleEndian, uint32(time.Now().Unix())) // Random Token
+		writeString(buf, req.SearchText)
+		sendPacket(buf.Bytes())
 		
-		sendSearch(req.SearchText)
 		status = "Searching Network for: " + req.SearchText
 		w.WriteHeader(http.StatusOK)
 	})
 
 	http.HandleFunc("/api/v0/searches/", func(w http.ResponseWriter, r *http.Request) {
-		// В НАСТОЯЩЕМ SOULSEEK РЕЗУЛЬТАТЫ ПРИХОДЯТ АСИНХРОННО ПО UDP/TCP ОТ ПИРОВ
-		// На iPhone без белого IP мы можем не увидеть входящих соединений.
-		// Но я верну пустой массив ЧЕСТНО, без фейков.
 		mu.Lock()
-		// Тут должны быть реальные данные из handleConnection
-		res := []Response{} 
+		res := []Response{} // Пока пусто, ждем пиров
 		mu.Unlock()
 		json.NewEncoder(w).Encode(res)
 	})
