@@ -21,7 +21,6 @@ struct SearchView: View {
                             }
                             Spacer()
                             Button(action: {
-                                // Логика скачивания будет здесь
                                 print("Downloading \(file.filename)")
                             }) {
                                 Image(systemName: "arrow.down.circle")

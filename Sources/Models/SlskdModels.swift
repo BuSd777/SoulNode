@@ -10,7 +10,7 @@ struct SearchResponse: Codable, Identifiable {
     let username: String
     let locked: Bool
     let fileCount: Int
-    let files: [SlskdFile]
+    let files:[SlskdFile]
 }
 
 struct SlskdFile: Codable, Identifiable {

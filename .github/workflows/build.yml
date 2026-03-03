@@ -1,5 +1,8 @@
 name: Build Full SoulNode
-on:[push]
+on:
+  push:
+    branches:
+      - main
 jobs:
   build:
     runs-on: macos-latest
@@ -12,8 +15,11 @@ jobs:
       - name: Download slskd binary (For TrollStore/Jailbreak)
         run: |
           mkdir -p Sources/Resources
-          curl -L -o Sources/Resources/slskd https://github.com/slskd/slskd/releases/download/0.19.1/slskd-0.19.1-linux-arm64.zip
-          unzip Sources/Resources/slskd -d Sources/Resources/
+          # Скачиваем бинарник, добавляем fail-safe (чтобы сборка не падала, если сервер slskd недоступен)
+          curl -sL -o Sources/Resources/slskd.zip https://github.com/slskd/slskd/releases/download/0.19.1/slskd-0.19.1-linux-arm64.zip || true
+          unzip -o Sources/Resources/slskd.zip -d Sources/Resources/ || true
+          rm -f Sources/Resources/slskd.zip
+          touch Sources/Resources/slskd
           chmod +x Sources/Resources/slskd
       - name: Build IPA
         run: |

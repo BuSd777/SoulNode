@@ -1,18 +1,12 @@
 name: SoulNode
 options:
   bundleIdPrefix: com.busd777
-packages:
-  AMSMB2:
-    url: https://github.com/amosavian/AMSMB2
-    from: 3.2.0
 targets:
   SoulNode:
     type: application
     platform: iOS
     deploymentTarget: "15.0"
     sources: [Sources]
-    dependencies:
-      - package: AMSMB2
     info:
       path: Info.plist
       properties:
