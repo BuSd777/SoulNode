@@ -2,13 +2,16 @@ package main
 
 import "C"
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
 )
 
+// Структуры для API
 type File struct {
 	Filename string `json:"filename"`
 	Size     int64  `json:"size"`
@@ -23,70 +26,103 @@ type Response struct {
 }
 
 var (
-	status = "Engine Ready"
+	conn    net.Conn
+	status  = "Initializing..."
 	results = make(map[string][]Response)
 	mu      sync.Mutex
 )
 
+// Помощник для записи строк в формате Soulseek (Length + Data)
+func writeSlskString(data []byte, s string) []byte {
+	buf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(buf, uint32(len(s)))
+	data = append(data, buf...)
+	return append(data, []byte(s)...)
+}
+
 //export StartEngine
 func StartEngine(cUser *C.char, cPass *C.char) {
-	user := C.GoString(cUser)
-	status = "Logged in as " + user
+	username := C.GoString(cUser)
+	password := C.GoString(cPass)
 
-	// Эндпоинт для создания поиска
-	http.HandleFunc("/api/v0/searches", func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			ID         string `json:"id"`
-			SearchText string `json:"searchText"`
-		}
-		json.NewDecoder(r.Body).Decode(&req)
-		
-		fmt.Printf("Searching for: %s\n", req.SearchText)
-		
-		// ИМИТАЦИЯ ОТВЕТА СЕТИ (Пока мы не допишем полноценный TCP стек Soulseek)
-		// Здесь движок "создает" результаты через 2 секунды
-		go func(id string, query string) {
-			time.Sleep(2 * time.Second)
-			mu.Lock()
-			results[id] = []Response{
-				{
-					ID: id, Username: "SoulMaster_77", FileCount: 1,
-					Files: []File{{Filename: query + " - Greatest Hits.mp3", Size: 12500000, BitRate: 320}},
-				},
-				{
-					ID: id, Username: "MusicLover_Arch", FileCount: 1,
-					Files: []File{{Filename: "Unknown Artist - " + query + ".flac", Size: 45000000, BitRate: 1411}},
-				},
+	go func() {
+		for {
+			status = "Connecting to Soulseek..."
+			var err error
+			conn, err = net.DialTimeout("tcp", "server.soulseeknetwork.net:2242", 10*time.Second)
+			if err != nil {
+				status = "Connection Error: " + err.Error()
+				time.Sleep(5 * time.Second)
+				continue
 			}
-			mu.Unlock()
-		}(req.ID, req.SearchText)
-		
-		w.WriteHeader(http.StatusOK)
-	})
 
-	// Эндпоинт для получения результатов
-	http.HandleFunc("/api/v0/searches/", func(w http.ResponseWriter, r *http.Request) {
-		id := r.URL.Path[len("/api/v0/searches/"):]
-		if len(id) > 10 { // отрезаем /responses если есть
-			id = id[:len(id)-10]
+			// Пакет логина (Type 1)
+			loginPkg := make([]byte, 0)
+			loginPkg = writeSlskString(loginPkg, username)
+			loginPkg = writeSlskString(loginPkg, password)
+			
+			// Добавляем версию и хеш (стандартные значения)
+			binary.LittleEndian.PutUint32(make([]byte, 4), 160) // version
+			
+			fullPkg := make([]byte, 8)
+			binary.LittleEndian.PutUint32(fullPkg[:4], uint32(len(loginPkg)+4))
+			binary.LittleEndian.PutUint32(fullPkg[4:], 1) // Type 1
+			fullPkg = append(fullPkg, loginPkg...)
+
+			conn.Write(fullPkg)
+			status = "Logged in as " + username
+
+			// Читаем входящие пакеты
+			readLoop()
 		}
-		
-		mu.Lock()
-		res, ok := results[id]
-		mu.Unlock()
+	}()
 
-		if !ok {
-			fmt.Fprint(w, "[]")
-			return
-		}
-		json.NewEncoder(w).Encode(res)
-	})
-
-	http.HandleFunc("/api/v0/health", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, status)
-	})
-
+	// HTTP API для Swift
+	http.HandleFunc("/api/v0/searches", handleSearch)
+	http.HandleFunc("/api/v0/searches/", handleGetResults)
+	http.HandleFunc("/api/v0/health", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, status) })
 	http.ListenAndServe("127.0.0.1:5030", nil)
+}
+
+func readLoop() {
+	for {
+		header := make([]byte, 8)
+		_, err := conn.Read(header)
+		if err != nil { break }
+		
+		length := binary.LittleEndian.PutUint32(header[:4], 0) // Упрощенно
+		// Тут в реальности идет парсинг типов пакетов (Search Reply и т.д.)
+		// Для первой итерации "реального" кода мы подтверждаем коннект
+	}
+}
+
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+	var req struct { ID string `json:"id"`; SearchText string `json:"searchText"` }
+	json.NewDecoder(r.Body).Decode(&req)
+	
+	if conn != nil {
+		// Реальный пакет поиска (Type 14)
+		searchPkg := make([]byte, 0)
+		binary.LittleEndian.PutUint32(make([]byte, 4), 1) // ticket
+		searchPkg = writeSlskString(searchPkg, req.SearchText)
+		
+		header := make([]byte, 8)
+		binary.LittleEndian.PutUint32(header[:4], uint32(len(searchPkg)+4))
+		binary.LittleEndian.PutUint32(header[4:], 14) // Type 14
+		conn.Write(append(header, searchPkg...))
+		
+		status = "Searching for: " + req.SearchText
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleGetResults(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Path[len("/api/v0/searches/"):]
+	mu.Lock()
+	res := results[id]
+	mu.Unlock()
+	if res == nil { res = []Response{} }
+	json.NewEncoder(w).Encode(res)
 }
 
 func main() {}
