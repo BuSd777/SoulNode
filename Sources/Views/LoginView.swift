@@ -3,30 +3,34 @@ import SwiftUI
 struct LoginView: View {
     @State private var username = ""
     @State private var password = ""
-    @ObservedObject var status = ServerStatus.shared
+    @AppStorage("serverAddr") var serverAddr = "127.0.0.1"
     @AppStorage("isLogged") var isLogged = false
+    @ObservedObject var status = ServerStatus.shared
 
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "bolt.circle.fill").font(.system(size: 80)).foregroundColor(.green)
-            Text("SoulNode").font(.largeTitle).bold()
-
-            if status.isConnecting {
-                ProgressView("Starting Engine...")
-                Text("Device may get warm").font(.caption).foregroundColor(.gray)
-                Button("Skip and Debug") { isLogged = true }.padding().foregroundColor(.blue)
-            } else {
-                VStack {
-                    TextField("Username", text: $username).textFieldStyle(RoundedBorderTextFieldStyle()).autocapitalization(.none)
-                    SecureField("Password", text: $password).textFieldStyle(RoundedBorderTextFieldStyle())
-                }.padding()
-
-                Button("Start Local Engine") {
+        Form {
+            Section("Local Server (Internal)") {
+                TextField("Username", text: $username).autocapitalization(.none)
+                SecureField("Password", text: $password)
+                Button("Start & Login") {
                     SlskdLauncher.shared.startServer(username: username, password: password)
-                }.buttonStyle(.borderedProminent).accentColor(.green)
-                
-                Button("Remote Server Mode") { isLogged = true }.padding().foregroundColor(.gray)
+                }
+                .disabled(status.isConnecting)
+                if status.isConnecting { ProgressView() }
+            }
+
+            Section("Existing Server (External)") {
+                TextField("Server IP / Domain", text: $serverAddr)
+                Button("Connect to this server") {
+                    isLogged = true
+                }
+            }
+            
+            Section {
+                NavigationLink("View detailed logs", destination: ServerView())
             }
         }
+        .navigationTitle("SoulNode Setup")
+        .onReceive(status.$isRunning) { running in if running { isLogged = true } }
     }
 }

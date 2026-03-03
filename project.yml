@@ -6,7 +6,8 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "15.0"
-    sources: [Sources]
+    sources: 
+      - path: Sources
     settings:
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
@@ -15,5 +16,5 @@ targets:
         UILaunchStoryboardName: LaunchScreen
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-        NSLocalNetworkUsageDescription: "Для подключения к локальному slskd"
+        NSLocalNetworkUsageDescription: "Для подключения к slskd"
         UIBackgroundModes: [audio, fetch, processing]

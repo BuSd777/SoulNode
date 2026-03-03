@@ -1,10 +1,14 @@
 import Foundation
+import SwiftUI
 
 class SlskdClient: ObservableObject {
     static let shared = SlskdClient()
     @Published var searchResults: [SearchResponse] = []
     
-    let baseURL = "http://127.0.0.1:5030/api/v0"
+    var baseURL: String {
+        let addr = UserDefaults.standard.string(forKey: "serverAddr") ?? "127.0.0.1"
+        return "http://\(addr):5030/api/v0"
+    }
 
     func performSearch(query: String) {
         let searchId = UUID().uuidString
@@ -14,18 +18,14 @@ class SlskdClient: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = SearchRequest(id: searchId, searchText: query)
         request.httpBody = try? JSONEncoder().encode(body)
-        URLSession.shared.dataTask(with: request) { _, _, _ in 
-            self.fetchResults(searchId: searchId) 
-        }.resume()
+        URLSession.shared.dataTask(with: request) { _, _, _ in self.fetchResults(searchId: searchId) }.resume()
     }
     
     func fetchResults(searchId: String) {
         guard let url = URL(string: "\(baseURL)/searches/\(searchId)/responses") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            if let data = data {
-                if let results = try? JSONDecoder().decode([SearchResponse].self, from: data) {
-                    DispatchQueue.main.async { self.searchResults = results }
-                }
+            if let data = data, let results = try? JSONDecoder().decode([SearchResponse].self, from: data) {
+                DispatchQueue.main.async { self.searchResults = results }
             }
         }.resume()
     }
