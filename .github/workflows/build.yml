@@ -1,4 +1,4 @@
-name: Monolith Engine Build
+name: Monolith Engine Build V3
 on: [push]
 jobs:
   build:
@@ -9,10 +9,17 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
-      - name: Build Go Library
+      - name: Build Go Library for iOS
         run: |
-          # Компилируем Go в статическую библиотеку C-archive
-          CGO_ENABLED=1 GOOS=ios GOARCH=arm64 go build -buildmode=c-archive -o libengine.a engine.go
+          # Узнаем путь к iOS SDK
+          export SDKPATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          export CLANG=$(xcrun --sdk iphoneos --find clang)
+          
+          # Собираем библиотеку, явно указывая iOS таргет для C-компилятора
+          CGO_ENABLED=1 \
+          CC="$CLANG -isysroot $SDKPATH -arch arm64 -miphoneos-version-min=15.0" \
+          GOOS=ios GOARCH=arm64 \
+          go build -buildmode=c-archive -o libengine.a engine.go
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Build IPA
@@ -25,5 +32,5 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: SoulNode-Monolith
+          name: SoulNode-Monolith-Final
           path: SoulNode.ipa

@@ -1,6 +1,6 @@
 #ifndef Bridge_h
 #define Bridge_h
 
-void StartEngine();
+void StartEngine(char* user, char* pass);
 
 #endif
