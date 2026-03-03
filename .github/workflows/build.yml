@@ -9,12 +9,13 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
-      - name: Compile & Sign Go Engine
+      - name: Compile Go Engine
         run: |
           mkdir -p Resources
-          GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o Resources/slskd main.go
-          # Фейковая подпись, чтобы iOS разрешила запуск
-          codesign -s - --force --ad-hoc Resources/slskd
+          # CGO_ENABLED=0 делает бинарник полностью автономным
+          CGO_ENABLED=0 GOOS=ios GOARCH=arm64 go build -ldflags="-s -w" -o Resources/slskd main.go
+          # Исправленная команда подписи
+          codesign -s - --force Resources/slskd
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Build IPA
@@ -24,7 +25,7 @@ jobs:
           mkdir -p Payload
           mv SoulNode.xcarchive/Products/Applications/SoulNode.app Payload/
           zip -r SoulNode.ipa Payload
-      - name: Upload
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoulNode-Real-Logic
