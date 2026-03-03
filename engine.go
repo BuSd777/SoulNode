@@ -5,13 +5,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 )
 
-// Структуры для API
 type File struct {
 	Filename string `json:"filename"`
 	Size     int64  `json:"size"`
@@ -27,17 +27,16 @@ type Response struct {
 
 var (
 	conn    net.Conn
-	status  = "Initializing..."
+	status  = "Engine Standby"
 	results = make(map[string][]Response)
 	mu      sync.Mutex
 )
 
-// Помощник для записи строк в формате Soulseek (Length + Data)
-func writeSlskString(data []byte, s string) []byte {
-	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, uint32(len(s)))
-	data = append(data, buf...)
-	return append(data, []byte(s)...)
+func writeSlskString(s string) []byte {
+	b := make([]byte, 4+len(s))
+	binary.LittleEndian.PutUint32(b[:4], uint32(len(s)))
+	copy(b[4:], s)
+	return b
 }
 
 //export StartEngine
@@ -48,36 +47,39 @@ func StartEngine(cUser *C.char, cPass *C.char) {
 	go func() {
 		for {
 			status = "Connecting to Soulseek..."
-			var err error
-			conn, err = net.DialTimeout("tcp", "server.soulseeknetwork.net:2242", 10*time.Second)
+			c, err := net.DialTimeout("tcp", "server.soulseeknetwork.net:2242", 10*time.Second)
 			if err != nil {
 				status = "Connection Error: " + err.Error()
 				time.Sleep(5 * time.Second)
 				continue
 			}
+			conn = c
 
-			// Пакет логина (Type 1)
-			loginPkg := make([]byte, 0)
-			loginPkg = writeSlskString(loginPkg, username)
-			loginPkg = writeSlskString(loginPkg, password)
+			// Формируем пакет логина (Type 1)
+			userBuf := writeSlskString(username)
+			passBuf := writeSlskString(password)
 			
-			// Добавляем версию и хеш (стандартные значения)
-			binary.LittleEndian.PutUint32(make([]byte, 4), 160) // version
+			msgLen := uint32(len(userBuf) + len(passBuf) + 8)
+			pkg := make([]byte, 4)
+			binary.LittleEndian.PutUint32(pkg, msgLen)
 			
-			fullPkg := make([]byte, 8)
-			binary.LittleEndian.PutUint32(fullPkg[:4], uint32(len(loginPkg)+4))
-			binary.LittleEndian.PutUint32(fullPkg[4:], 1) // Type 1
-			fullPkg = append(fullPkg, loginPkg...)
+			binary.LittleEndian.PutUint32(pkg, 1) // Type 1
+			pkg = append(pkg, userBuf...)
+			pkg = append(pkg, passBuf...)
+			
+			// Версия протокола
+			ver := make([]byte, 4)
+			binary.LittleEndian.PutUint32(ver, 160)
+			pkg = append(pkg, ver...)
 
-			conn.Write(fullPkg)
+			conn.Write(pkg)
 			status = "Logged in as " + username
 
-			// Читаем входящие пакеты
+			// Читаем ответы
 			readLoop()
 		}
 	}()
 
-	// HTTP API для Swift
 	http.HandleFunc("/api/v0/searches", handleSearch)
 	http.HandleFunc("/api/v0/searches/", handleGetResults)
 	http.HandleFunc("/api/v0/health", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, status) })
@@ -87,41 +89,43 @@ func StartEngine(cUser *C.char, cPass *C.char) {
 func readLoop() {
 	for {
 		header := make([]byte, 8)
-		_, err := conn.Read(header)
-		if err != nil { break }
+		if _, err := io.ReadFull(conn, header); err != nil {
+			break
+		}
 		
-		length := binary.LittleEndian.PutUint32(header[:4], 0) // Упрощенно
-		// Тут в реальности идет парсинг типов пакетов (Search Reply и т.д.)
-		// Для первой итерации "реального" кода мы подтверждаем коннект
+		length := binary.LittleEndian.Uint32(header[:4])
+		code := binary.LittleEndian.Uint32(header[4:])
+		
+		// Читаем тело сообщения, чтобы не забивать сокет
+		body := make([]byte, length-4)
+		io.ReadFull(conn, body)
+		
+		fmt.Printf("Received message code: %d\n", code)
 	}
 }
 
 func handleSearch(w http.ResponseWriter, r *http.Request) {
 	var req struct { ID string `json:"id"`; SearchText string `json:"searchText"` }
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return
+	}
 	
 	if conn != nil {
-		// Реальный пакет поиска (Type 14)
-		searchPkg := make([]byte, 0)
-		binary.LittleEndian.PutUint32(make([]byte, 4), 1) // ticket
-		searchPkg = writeSlskString(searchPkg, req.SearchText)
-		
-		header := make([]byte, 8)
-		binary.LittleEndian.PutUint32(header[:4], uint32(len(searchPkg)+4))
+		searchPkg := writeSlskString(req.SearchText)
+		header := make([]byte, 12)
+		binary.LittleEndian.PutUint32(header[:4], uint32(len(searchPkg)+8))
 		binary.LittleEndian.PutUint32(header[4:], 14) // Type 14
-		conn.Write(append(header, searchPkg...))
+		binary.LittleEndian.PutUint32(header[8:], 1)  // Ticket
 		
-		status = "Searching for: " + req.SearchText
+		conn.Write(append(header, searchPkg...))
+		status = "Search sent: " + req.SearchText
 	}
-	w.WriteHeader(http.StatusOK)
 }
 
 func handleGetResults(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/api/v0/searches/"):]
 	mu.Lock()
-	res := results[id]
+	res := []Response{} // Пока возвращаем пустой массив, чтобы Swift не падал
 	mu.Unlock()
-	if res == nil { res = []Response{} }
 	json.NewEncoder(w).Encode(res)
 }
 
