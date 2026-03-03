@@ -4,39 +4,42 @@ class SlskdLauncher {
     static let shared = SlskdLauncher()
     
     func startServer(username: String, password: String) {
-        if ServerStatus.shared.isRunning { return }
+        let port = UserDefaults.standard.string(forKey: "serverPort") ?? "5030"
+        
         ServerStatus.shared.isConnecting = true
-        ServerStatus.shared.logs = "--- Monolith Boot v3 ---\n"
+        ServerStatus.shared.logs += "--- MANUAL BOOT INITIATED ---\n"
+        ServerStatus.shared.logs += "Target Port: \(port)\n"
         
         DispatchQueue.global(qos: .userInitiated).async {
-            ServerStatus.shared.logs += "Waking up Go Engine...\n"
-            // Конвертируем Swift строки в C-строки для Go
-            let userPtr = strdup(username)
-            let passPtr = strdup(password)
-            StartEngine(userPtr, passPtr)
+            let portPtr = strdup(port)
+            StartEngine(portPtr)
         }
         
-        self.checkHealth()
+        self.checkHealth(port: port)
     }
 
-    private func checkHealth() {
+    private func checkHealth(port: String) {
         var attempts = 0
-        Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { timer in
+        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { timer in
             attempts += 1
-            let url = URL(string: "http://127.0.0.1:5030/api/v0/health")!
+            ServerStatus.shared.logs += "Ping localhost:\(port) (Attempt \(attempts))\n"
+            
+            let url = URL(string: "http://127.0.0.1:\(port)/api/v0/health")!
             URLSession.shared.dataTask(with: url) { data, _, _ in
                 if let data = data, let str = String(data: data, encoding: .utf8) {
                     DispatchQueue.main.async {
-                        ServerStatus.shared.logs += "SERVER: \(str)\n"
+                        ServerStatus.shared.logs += "GOT RESPONSE: \(str)\n"
                         ServerStatus.shared.isRunning = true
                         ServerStatus.shared.isConnecting = false
                         timer.invalidate()
                     }
                 }
             }.resume()
-            if attempts > 20 { 
+            
+            if attempts > 25 { 
                 timer.invalidate()
                 ServerStatus.shared.isConnecting = false
+                ServerStatus.shared.logs += "TIMEOUT: Engine not responding on port \(port)\n"
             }
         }
     }

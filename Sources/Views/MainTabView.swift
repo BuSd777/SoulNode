@@ -8,7 +8,9 @@ struct MainTabView: View {
             Text("Transfers")
                 .tabItem { Label("Transfers", systemImage: "arrow.up.arrow.down") }
             ServerView()
-                .tabItem { Label("Server", systemImage: "server.rack") }
+                .tabItem { Label("Logs", systemImage: "terminal") }
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
         .accentColor(Color(red: 0.25, green: 0.8, blue: 0.65))
     }
