@@ -2,7 +2,7 @@ import Foundation
 
 class SlskdClient: ObservableObject {
     static let shared = SlskdClient()
-    @Published var searchResults:[SearchResponse] =[]
+    @Published var searchResults: [SearchResponse] =[]
     
     let baseURL = "http://127.0.0.1:5030/api/v0"
 
