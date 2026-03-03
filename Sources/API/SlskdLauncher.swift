@@ -6,30 +6,41 @@ class SlskdLauncher {
     func startServer(username: String, password: String) {
         if ServerStatus.shared.isRunning { return }
         ServerStatus.shared.isConnecting = true
-        ServerStatus.shared.logs = "--- REAL P2P MODE ---\n"
+        ServerStatus.shared.logs = "--- Monolith Boot v4 ---\n"
         
         DispatchQueue.global(qos: .userInitiated).async {
+            ServerStatus.shared.logs += "Waking up Go Engine...\n"
             let userPtr = strdup(username)
             let passPtr = strdup(password)
+            // Теперь Swift точно знает, что аргументов два
             StartEngine(userPtr, passPtr)
+            
+            free(userPtr)
+            free(passPtr)
         }
         
-        checkHealth()
+        self.checkHealth()
     }
 
     private func checkHealth() {
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:5030/api/v0/health")!) { data, _, _ in
+        var attempts = 0
+        Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { timer in
+            attempts += 1
+            let url = URL(string: "http://127.0.0.1:5030/api/v0/health")!
+            URLSession.shared.dataTask(with: url) { data, _, _ in
                 if let data = data, let str = String(data: data, encoding: .utf8) {
                     DispatchQueue.main.async {
-                        ServerStatus.shared.logs = str
-                        if str.contains("ONLINE") || str.contains("Listening") {
-                            ServerStatus.shared.isRunning = true
-                            ServerStatus.shared.isConnecting = false
-                        }
+                        ServerStatus.shared.logs += "SERVER: \(str)\n"
+                        ServerStatus.shared.isRunning = true
+                        ServerStatus.shared.isConnecting = false
+                        timer.invalidate()
                     }
                 }
             }.resume()
+            if attempts > 20 { 
+                timer.invalidate()
+                ServerStatus.shared.isConnecting = false
+            }
         }
     }
 }

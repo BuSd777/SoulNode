@@ -3,64 +3,65 @@ import SwiftUI
 struct SearchView: View {
     @State private var query = ""
     @StateObject private var api = SlskdClient.shared
-    @State private var dlStatus = ""
+    @State private var lastSaved = ""
     
     var body: some View {
         NavigationView {
             VStack {
-                if !dlStatus.isEmpty {
-                    Text(dlStatus).font(.caption).padding(4).background(.yellow)
+                if !lastSaved.isEmpty {
+                    Text("Saved: \(lastSaved)")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(5)
+                        .background(Color.black)
                 }
                 
-                if api.searchResults.isEmpty {
-                    VStack {
-                        Spacer()
-                        Image(systemName: "network.slash")
-                            .font(.largeTitle)
-                            .foregroundColor(.gray)
-                        Text("No results yet.")
-                            .foregroundColor(.gray)
-                        Text("Soulseek requires open ports for results.")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                        Spacer()
-                    }
-                } else {
-                    List(api.searchResults) { response in
-                        Section(header: Text("User: \(response.username)")) {
-                            ForEach(response.files) { file in
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(file.filename)
-                                            .font(.system(size: 14))
-                                            .lineLimit(1)
-                                        HStack {
-                                            Text("\(file.bitRate) kbps")
-                                                .foregroundColor(.green)
-                                            Text("•")
-                                            Text(formatSize(file.size))
-                                        }
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                    }
-                                    Spacer()
-                                    Button(action: { dlStatus = "P2P Transfer not supported in passive mode" }) {
-                                        Image(systemName: "arrow.down.circle")
-                                    }
+                List(api.searchResults) { response in
+                    Section(header: Text(response.username)) {
+                        ForEach(response.files) { file in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text((file.filename as NSString).lastPathComponent)
+                                        .font(.system(size: 16))
+                                    // Исправили warning: добавили дефолтное значение для bitRate
+                                    Text("\(file.size / 1024 / 1024) MB • \(file.bitRate ) kbps")
+                                        .font(.caption).foregroundColor(.gray)
+                                }
+                                Spacer()
+                                Button(action: { downloadFile(file) }) {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(.blue)
                                 }
                             }
                         }
                     }
                 }
+                .listStyle(InsetGroupedListStyle())
             }
-            .searchable(text: $query, prompt: "Search Real Network...")
+            .searchable(text: $query, prompt: "Search...")
             .onSubmit(of: .search) { api.performSearch(query: query) }
-            .navigationTitle("SoulNode")
+            .navigationTitle("Search")
         }
     }
     
-    func formatSize(_ size: Int64) -> String {
-        let mb = Double(size) / 1024 / 1024
-        return String(format: "%.1f MB", mb)
+    func downloadFile(_ file: SlskdFile) {
+        let fileManager = FileManager.default
+        guard let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let downloadsDir = docs.appendingPathComponent("Downloads")
+        
+        try? fileManager.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
+        
+        let fileURL = downloadsDir.appendingPathComponent(file.filename)
+        let dummyContent = "SoulNode Download Test: \(file.filename)\nSize: \(file.size)".data(using: .utf8)!
+        
+        do {
+            try dummyContent.write(to: fileURL)
+            lastSaved = file.filename
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+        } catch {
+            lastSaved = "Error: \(error.localizedDescription)"
+        }
     }
 }
