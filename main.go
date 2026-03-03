@@ -8,7 +8,10 @@ func main() {
 	user := flag.String("user", "", "Soulseek username")
 	pass := flag.String("pass", "", "Soulseek password")
 	flag.Parse()
-	fmt.Printf("Engine starting for user: %s\n", *user)
+	
+	// Используем обе переменные, чтобы Go не ругался
+	fmt.Printf("Engine starting for user: %s (Password received: %v)\n", *user, *pass != "")
+	
 	http.HandleFunc("/api/v0/health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "OK")
 	})
