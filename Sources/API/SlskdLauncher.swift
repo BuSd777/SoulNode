@@ -5,62 +5,65 @@ class SlskdLauncher {
     
     func startServer(username: String, password: String) {
         ServerStatus.shared.isConnecting = true
-        ServerStatus.shared.logs += "--- Starting Local Initialization ---\n"
+        ServerStatus.shared.logs = "--- Initialization ---\n"
         
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let configPath = docs.appendingPathComponent("slskd.yml").path
+        // Пытаемся найти бинарник во всех папках бандла
+        let bundlePath = Bundle.main.bundlePath
+        let binaryPath = Bundle.main.path(forResource: "slskd", ofType: nil) 
+            ?? "\(bundlePath)/slskd"
+            ?? "\(bundlePath)/Resources/slskd"
+
+        ServerStatus.shared.logs += "Checking binary at: \(binaryPath)\n"
         
-        ServerStatus.shared.logs += "Creating config at: \(configPath)\n"
-        let configContent = "is_headless: true\nsoulseek:\n  username: \(username)\n  password: \(password)\nflags:\n  no_auth: true"
-        try? configContent.write(toFile: configPath, atomically: true, encoding: .utf8)
-        
-        // Ищем бинарник более тщательно
-        ServerStatus.shared.logs += "Searching for slskd binary...\n"
-        if let bPath = Bundle.main.path(forResource: "slskd", ofType: nil) {
-             ServerStatus.shared.logs += "FOUND: \(bPath)\n"
-             launch(binaryPath: bPath, configPath: configPath)
+        if FileManager.default.fileExists(atPath: binaryPath) {
+            ServerStatus.shared.logs += "SUCCESS: Binary found. Spawning...\n"
+            launch(path: binaryPath)
         } else {
-             ServerStatus.shared.logs += "CRITICAL ERROR: Binary 'slskd' not found in App Bundle. Check project.yml\n"
-             ServerStatus.shared.isConnecting = false
+            ServerStatus.shared.logs += "ERROR: slskd not found in bundle. Listing files:\n"
+            let files = (try? FileManager.default.contentsOfDirectory(atPath: bundlePath)) ?? []
+            ServerStatus.shared.logs += files.joined(separator: ", ") + "\n"
+            ServerStatus.shared.isConnecting = false
         }
     }
 
-    private func launch(binaryPath: String, configPath: String) {
+    private func launch(path: String) {
         DispatchQueue.global(qos: .background).async {
             var pid: pid_t = 0
-            let args = [binaryPath, "--config", configPath]
+            let args = [path]
             let cArgs = args.map { strdup($0) } + [nil]
-            let status = posix_spawn(&pid, binaryPath, nil, nil, cArgs, nil)
+            let status = posix_spawn(&pid, path, nil, nil, cArgs, nil)
             
             DispatchQueue.main.async {
                 if status == 0 {
-                    ServerStatus.shared.logs += "Spawned! PID: \(pid). Checking health...\n"
-                    self.checkHealth()
+                    ServerStatus.shared.logs += "Process running (PID \(pid)). Pinging port 5030...\n"
+                    self.checkPort()
                 } else {
-                    ServerStatus.shared.logs += "Spawn FAILED. Code: \(status)\n"
+                    ServerStatus.shared.logs += "FAILED to spawn. Error code: \(status)\n"
                     ServerStatus.shared.isConnecting = false
                 }
             }
-            for ptr in cArgs { if let p = ptr { free(p) } }
         }
     }
 
-    private func checkHealth() {
+    private func checkPort() {
         var attempts = 0
-        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { timer in
+        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { timer in
             attempts += 1
-            ServerStatus.shared.logs += "Ping 127.0.0.1:5030... (\(attempts))\n"
             URLSession.shared.dataTask(with: URL(string: "http://127.0.0.1:5030/api/v0/health")!) { _, res, _ in
                 if (res as? HTTPURLResponse)?.statusCode == 200 {
                     DispatchQueue.main.async {
                         ServerStatus.shared.isRunning = true
                         ServerStatus.shared.isConnecting = false
-                        ServerStatus.shared.logs += "DONE: Server is Online!\n"
+                        ServerStatus.shared.logs += "SERVER IS ONLINE!\n"
                         timer.invalidate()
                     }
                 }
             }.resume()
-            if attempts > 8 { timer.invalidate(); ServerStatus.shared.isConnecting = false }
+            if attempts > 10 { 
+                timer.invalidate()
+                ServerStatus.shared.logs += "Timeout: Server not responding.\n"
+                ServerStatus.shared.isConnecting = false 
+            }
         }
     }
 }

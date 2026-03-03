@@ -1,30 +1,29 @@
-name: Build Full SoulNode
-on:
-  push:
-    branches:
-      - main
+name: Build SoulNode Go-Edition
+on: [push]
 jobs:
   build:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - name: Compile Go Engine for iOS
+        run: |
+          GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build -o Sources/Resources/slskd main.go
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Project
         run: xcodegen generate
-      - name: Create Placeholder Binary
-        run: |
-          mkdir -p Sources/Resources
-          echo "Placeholder for slskd binary" > Sources/Resources/slskd
-          chmod +x Sources/Resources/slskd
       - name: Build IPA
         run: |
           xcodebuild clean archive -project SoulNode.xcodeproj -scheme SoulNode -configuration Release -archivePath SoulNode.xcarchive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
           mkdir -p Payload
           mv SoulNode.xcarchive/Products/Applications/SoulNode.app Payload/
           zip -r SoulNode.ipa Payload
-      - name: Upload IPA
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SoulNode-Release
+          name: SoulNode-Go-Release
           path: SoulNode.ipa
