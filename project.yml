@@ -1,21 +1,23 @@
 name: SoulNode
 options:
-  bundleIdPrefix: com.soulseek
+  bundleIdPrefix: com.busd777
+packages:
+  AMSMB2:
+    url: https://github.com/amosavian/AMSMB2
+    from: 3.2.0
 targets:
   SoulNode:
     type: application
     platform: iOS
     deploymentTarget: "15.0"
-    sources: [SoulSwift]
-    info:
-      path: SoulSwift/Info.plist
-    entitlements: 
-      path: SoulSwift/SoulNode.entitlements
+    sources: [Sources]
     dependencies:
-      - framework: Frameworks/Node.xcframework
-        embed: true
-    settings:
-      CODE_SIGNING_ALLOWED: NO
-      CODE_SIGNING_REQUIRED: NO
-      AD_HOC_CODE_SIGNING_ALLOWED: YES
-      ENABLE_BITCODE: NO
+      - package: AMSMB2
+    info:
+      path: Info.plist
+      properties:
+        UILaunchStoryboardName: LaunchScreen
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSLocalNetworkUsageDescription: "Для подключения к локальному slskd"
+        UIBackgroundModes: [audio, fetch, processing]
